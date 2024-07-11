@@ -54,6 +54,8 @@
 #include "tlbc-data.h"
 #include "tlbc-gen-cpp.h"
 
+#include "json.h"
+
 int verbosity;
 
 namespace src {
@@ -3056,6 +3058,148 @@ void register_source(std::string source) {
 
 }  // namespace tlbc
 
+namespace json {
+
+using json = nlohmann::json;
+using namespace tlbc;
+
+class SerializationException : public std::logic_error {
+public:
+  SerializationException() : std::logic_error("Not implemented") {}
+  explicit SerializationException(const char* c) : std::logic_error(c) {}
+};
+
+std::string extract_tag(unsigned long long x) {
+  std::string res;
+
+  unsigned long long beg = 0;
+
+  while ((x & 1ULL << beg) == 0) beg++;
+
+  for (int i = 63; i > beg; i--) {
+    if (x & 1ULL << i) {
+      res += '1';
+    } else {
+      res += '0';
+    }
+  }
+
+  return res;
+}
+
+json dump_type_expr(TypeExpr* te) {
+  json te_json;
+
+  switch (te->tp) {
+    case TypeExpr::te_IntConst: {
+      te_json["kind"] = "int-const";
+      te_json["value"] = te->value;
+      break;
+    }
+    case TypeExpr::te_Ref: {
+      te_json["kind"] = "ref";
+      te_json["ref"] = dump_type_expr(te->args[0]);
+      break;
+    }
+    case TypeExpr::te_Apply: {
+      if (te->type_applied == nullptr) {
+        throw SerializationException("Unexpected nullptr type_applied");
+      }
+
+      // for now assume that it's a type
+      te_json["kind"] = "type";
+      te_json["type-id"] = te->type_applied->type_idx;
+
+      json args = json::array();
+      for (TypeExpr* arg : te->args) {
+        args.push_back(dump_type_expr(arg));
+      }
+      te_json["args"] = args;
+      break;
+    }
+    case TypeExpr::te_Param: {
+      // TODO assume that every param is a type
+
+      te_json["kind"] = "param";
+      te_json["idx"] = te->value;
+      break;
+    }
+    case TypeExpr::te_Type: {
+      // not expected
+      throw SerializationException("Unexpected te_Type kind");
+      break;
+    }
+    default:
+      throw SerializationException("Kind is not supported");
+  }
+
+  return te_json;
+}
+
+json dump_constructor(Constructor* cs) {
+  json cs_json;
+  cs_json["name"] = cs->get_name();
+  cs_json["tag"] = extract_tag(cs->tag);
+
+  json fields = json::array();
+
+  for (const Field& field : cs->fields) {
+    if (field.implicit) {
+      if (field.type->tp != TypeExpr::te_Type) {
+        // TODO support such fields
+        throw SerializationException("Not type implicit fields are not supported");
+      }
+
+      continue;
+    }
+
+    json field_json;
+    field_json["name"] = field.get_name();
+    field_json["type"] = dump_type_expr(field.type);
+    fields.push_back(field_json);
+  }
+
+  cs_json["fields"] = fields;
+
+  return cs_json;
+}
+
+std::string dump_types() {
+  json result_json;
+
+  for (int i = 0; i < types_num; i++) {
+    Type& type = types[i];
+
+    bool is_builtin = false;
+    if (i < builtin_types_num) {
+      is_builtin = true;
+    }
+
+    json el_json;
+    el_json["name"] = type.get_name();
+    el_json["arity"] = type.arity;
+    el_json["builtin"] = is_builtin;
+    el_json["id"] = i;
+
+    try {
+      for (Constructor* cs : type.constructors) {
+        el_json["constructors"].push_back(dump_constructor(cs));
+      }
+    } catch (SerializationException& e) {
+      if (verbosity > 0) {
+        std::cerr << "Couldn't serialize " << type.get_name() << "; " << e.what() << "\n";
+      }
+      continue;
+    }
+
+    result_json.push_back(el_json);
+  }
+
+  return result_json.dump();
+}
+
+}
+
 #include "tlbc-gen-cpp.cpp"
 
 /*
@@ -3066,7 +3210,7 @@ void register_source(std::string source) {
 
 void usage(const char* progname) {
   std::cerr << "usage: " << progname
-            << " [-v][-i][-h][-c][-z][-t][-T][-q][-n<namespace>][-o<output-filename>] {<tlb-filename> ...}\n"
+            << " [-j][-v][-i][-h][-c][-z][-t][-T][-q][-n<namespace>][-o<output-filename>] {<tlb-filename> ...}\n"
             << "-v\tIncrease verbosity level\n"
             << "-t\tShow tag mismatch warnings\n"
             << "-q\tOmit code generation (TLB scheme check only)\n"
@@ -3074,7 +3218,8 @@ void usage(const char* progname) {
             << "-c\tGenerate C++ source file only (usually .cpp)\n"
             << "-T\tAdd type pointer members into generated C++ data record classes\n"
             << "-z\tAppend .cpp or .hpp to output filename\n"
-            << "-n<namespace>\tPut generated code into specified namespace (default `tlb`)\n";
+            << "-n<namespace>\tPut generated code into specified namespace (default `tlb`)\n"
+            << "-j\tSerialize TL-B scheme into json\n";
   std::exit(2);
 }
 
@@ -3084,7 +3229,8 @@ int main(int argc, char* const argv[]) {
   int i;
   bool interactive = false;
   bool no_code_gen = false;
-  while ((i = getopt(argc, argv, "chin:o:qTtvz")) != -1) {
+  bool serialize_json = false;
+  while ((i = getopt(argc, argv, "jchin:o:qTtvz")) != -1) {
     switch (i) {
       case 'i':
         interactive = true;
@@ -3115,6 +3261,9 @@ int main(int argc, char* const argv[]) {
         break;
       case 'z':
         tlbc::append_suffix = true;
+        break;
+      case 'j':
+        serialize_json = true;
         break;
       default:
         usage(argv[0]);
@@ -3147,6 +3296,10 @@ int main(int argc, char* const argv[]) {
       throw src::Fatal{"no source files, no output"};
     }
     tlbc::check_scheme();
+    if (serialize_json) {
+      std::cout << json::dump_types() << std::endl;
+      return 0;
+    }
     if (verbosity > 0) {
       tlbc::dump_all_types();
       tlbc::dump_all_constexpr();
