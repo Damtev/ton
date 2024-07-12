@@ -3092,12 +3092,12 @@ json dump_type_expr(TypeExpr* te) {
 
   switch (te->tp) {
     case TypeExpr::te_IntConst: {
-      te_json["kind"] = "int-const";
+      te_json["type"] = "int-const";
       te_json["value"] = te->value;
       break;
     }
     case TypeExpr::te_Ref: {
-      te_json["kind"] = "ref";
+      te_json["type"] = "ref";
       te_json["ref"] = dump_type_expr(te->args[0]);
       break;
     }
@@ -3107,8 +3107,8 @@ json dump_type_expr(TypeExpr* te) {
       }
 
       // for now assume that it's a type
-      te_json["kind"] = "type";
-      te_json["type-id"] = te->type_applied->type_idx;
+      te_json["type"] = "type";
+      te_json["id"] = te->type_applied->type_idx;
 
       json args = json::array();
       for (TypeExpr* arg : te->args) {
@@ -3120,13 +3120,13 @@ json dump_type_expr(TypeExpr* te) {
     case TypeExpr::te_Param: {
       // TODO assume that every param is a type
 
-      te_json["kind"] = "param";
+      te_json["type"] = "param";
       te_json["idx"] = te->value;
       break;
     }
     case TypeExpr::te_Type: {
       // not expected
-      throw SerializationException("Unexpected te_Type kind");
+      throw SerializationException("Unexpected te_Type type");
       break;
     }
     default:
@@ -3155,7 +3155,7 @@ json dump_constructor(Constructor* cs) {
 
     json field_json;
     field_json["name"] = field.get_name();
-    field_json["type"] = dump_type_expr(field.type);
+    field_json["type-expr"] = dump_type_expr(field.type);
     fields.push_back(field_json);
   }
 
@@ -3170,20 +3170,16 @@ std::string dump_types() {
   for (int i = 0; i < types_num; i++) {
     Type& type = types[i];
 
-    bool is_builtin = false;
-    if (i < builtin_types_num) {
-      is_builtin = true;
-    }
-
     json el_json;
     el_json["name"] = type.get_name();
     el_json["arity"] = type.arity;
-    el_json["builtin"] = is_builtin;
     el_json["id"] = i;
+
+    json constructors = json::array();
 
     try {
       for (Constructor* cs : type.constructors) {
-        el_json["constructors"].push_back(dump_constructor(cs));
+        constructors.push_back(dump_constructor(cs));
       }
     } catch (SerializationException& e) {
       if (verbosity > 0) {
@@ -3191,6 +3187,8 @@ std::string dump_types() {
       }
       continue;
     }
+
+    el_json["constructors"] = constructors;
 
     result_json.push_back(el_json);
   }
