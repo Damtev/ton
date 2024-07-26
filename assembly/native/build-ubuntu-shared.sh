@@ -28,18 +28,18 @@ export CC=$(which clang-16)
 export CXX=$(which clang++-16)
 export CCACHE_DISABLE=1
 
-#if [ ! -d "openssl_3" ]; then
-#  git clone -b openssl-3.1.4 https://github.com/openssl/openssl openssl_3
-#  cd openssl_3
-#  opensslPath=`pwd`
-#  ./config
-#  make build_libs -j1
-#  test $? -eq 0 || { echo "Can't compile openssl_3"; exit 1; }
-#  cd ..
-#else
-#  opensslPath=$(pwd)/openssl_3
-#  echo "Using compiled openssl_3"
-#fi
+if [ ! -d "openssl_3" ]; then
+  git clone -b openssl-3.1.4 https://github.com/openssl/openssl openssl_3
+  cd openssl_3
+  opensslPath=`pwd`
+  ./config
+  make build_libs -j1
+  test $? -eq 0 || { echo "Can't compile openssl_3"; exit 1; }
+  cd ..
+else
+  opensslPath=$(pwd)/openssl_3
+  echo "Using compiled openssl_3"
+fi
 
 cmake -GNinja -DTON_USE_JEMALLOC=ON .. \
 -DCMAKE_BUILD_TYPE=Release \
@@ -64,25 +64,7 @@ ninja tlbc
       test $? -eq 0 || { echo "Can't compile ton"; exit 1; }
 fi
 
-strip -g storage/storage-daemon/storage-daemon \
-         storage/storage-daemon/storage-daemon-cli \
-         blockchain-explorer/blockchain-explorer \
-         crypto/fift \
-         crypto/tlbc \
-         crypto/func \
-         crypto/create-state \
-         validator-engine-console/validator-engine-console \
-         tonlib/tonlib-cli \
-         tonlib/libtonlibjson.so.0.5 \
-         http/http-proxy \
-         rldp-http-proxy/rldp-http-proxy \
-         dht-server/dht-server \
-         lite-client/lite-client \
-         validator-engine/validator-engine \
-         utils/generate-random-id \
-         utils/json2tlo \
-         adnl/adnl-proxy \
-         emulator/libemulator.*
+strip -g crypto/tlbc
 
 test $? -eq 0 || { echo "Can't strip final binaries"; exit 1; }
 
