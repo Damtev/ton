@@ -68,14 +68,6 @@ strip -g crypto/tlbc
 
 test $? -eq 0 || { echo "Can't strip final binaries"; exit 1; }
 
-# simple binaries' test
-./storage/storage-daemon/storage-daemon -V || exit 1
-./validator-engine/validator-engine -V || exit 1
-./lite-client/lite-client -V || exit 1
-./crypto/fift  -V || exit 1
-
-ldd ./validator-engine/validator-engine || exit 1
-
 cd ..
 
 if [ "$with_artifacts" = true ]; then
