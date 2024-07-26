@@ -29,12 +29,11 @@ export CXX=$(which clang++-16)
 export CCACHE_DISABLE=1
 
 if [ ! -d "openssl_3" ]; then
-  git clone https://github.com/openssl/openssl openssl_3
+  git clone -b openssl-3.1.4 https://github.com/openssl/openssl openssl_3
   cd openssl_3
   opensslPath=`pwd`
-  git checkout openssl-3.1.4
   ./config
-  make build_libs -j12
+  make build_libs -j1
   test $? -eq 0 || { echo "Can't compile openssl_3"; exit 1; }
   cd ..
 else
