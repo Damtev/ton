@@ -33,7 +33,7 @@ if [ ! -d "openssl_3" ]; then
   cd openssl_3
   opensslPath=`pwd`
   ./config
-  make build_libs -j1
+  make build_libs -j12
   test $? -eq 0 || { echo "Can't compile openssl_3"; exit 1; }
   cd ..
 else
